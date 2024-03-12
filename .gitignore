@@ -1,0 +1,8 @@
+build*/
+out
+*.bat
+*.sh
+.cache
+.idea
+.vs
+.vscode
