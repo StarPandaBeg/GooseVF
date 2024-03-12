@@ -1,8 +1,8 @@
-#include "Utility.h"
+#include "GooseVF/Utility.h"
 
 #include <sstream>
 
-#include "pch.h"
+#include "GooseVF/pch.h"
 
 std::vector<std::string> GooseVF::splitPath(const std::string& s) {
     std::stringstream stream(s);

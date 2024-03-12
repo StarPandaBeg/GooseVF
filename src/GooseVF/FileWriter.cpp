@@ -1,10 +1,10 @@
-#include "FileWriter.h"
+#include "GooseVF/FileWriter.h"
 
 #include <filesystem>
 #include <queue>
 
-#include "Utility.h"
-#include "pch.h"
+#include "GooseVF/Utility.h"
+#include "GooseVF/pch.h"
 
 using namespace GooseVF;
 

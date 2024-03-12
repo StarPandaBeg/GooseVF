@@ -1,9 +1,9 @@
-#include "FileReader.h"
+#include "GooseVF/FileReader.h"
 
 #include <queue>
 
-#include "Utility.h"
-#include "pch.h"
+#include "GooseVF/Utility.h"
+#include "GooseVF/pch.h"
 
 using namespace GooseVF;
 

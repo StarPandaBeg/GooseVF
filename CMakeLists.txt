@@ -3,7 +3,7 @@ project(GooseVF LANGUAGES CXX)
 option(BUILD_SHARED_LIBS "Build shared libraries" OFF)
 
 file(GLOB_RECURSE source_files
-   "src/*.cpp"
+   "src/GooseVF/*.cpp"
 )
 
 add_library(GooseVF STATIC ${source_files})
