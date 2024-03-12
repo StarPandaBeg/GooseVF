@@ -2,8 +2,6 @@
 
 #include <sstream>
 
-#include "GooseVF/pch.h"
-
 std::vector<std::string> GooseVF::splitPath(const std::string& s) {
     std::stringstream stream(s);
     std::string segment;

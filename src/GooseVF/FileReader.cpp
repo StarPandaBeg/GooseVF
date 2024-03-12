@@ -3,7 +3,6 @@
 #include <queue>
 
 #include "GooseVF/Utility.h"
-#include "GooseVF/pch.h"
 
 using namespace GooseVF;
 
