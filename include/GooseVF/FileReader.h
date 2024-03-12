@@ -10,7 +10,11 @@
 namespace GooseVF {
     class FileReader {
        public:
-        FileReader(std::string path);
+        FileReader();
+        FileReader(const std::string& path);
+
+        void open(const std::string& path);
+
         int contentVersion();
         void readFile(const std::string& path, std::vector<char>& output);
         void iterateFiles(const std::function<void(const std::string&)> callback);

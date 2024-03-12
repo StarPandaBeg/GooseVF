@@ -6,7 +6,14 @@
 
 using namespace GooseVF;
 
-FileReader::FileReader(std::string path) {
+FileReader::FileReader() {
+}
+
+FileReader::FileReader(const std::string& path) {
+    open(path);
+}
+
+void FileReader::open(const std::string& path) {
     file.open(path, std::ios::binary);
     if (!file.is_open())
         throw std::runtime_error("File not found");
@@ -21,10 +28,15 @@ FileReader::FileReader(std::string path) {
 }
 
 int FileReader::contentVersion() {
+    if (!file.is_open())
+        throw std::runtime_error("File is not opened");
     return _contentVersion;
 }
 
 void FileReader::readFile(const std::string& path, std::vector<char>& output) {
+    if (!file.is_open())
+        throw std::runtime_error("File is not opened");
+
     auto parts = splitPath(path);
     if (!parts.size())
         throw std::runtime_error("File not found.");
@@ -56,6 +68,9 @@ void FileReader::iterateFiles(const std::function<void(const std::string&)> call
 }
 
 void FileReader::iterateFiles(const std::function<void(const std::string&)> callback, const std::string& rootDir) {
+    if (!file.is_open())
+        throw std::runtime_error("File is not opened");
+
     std::vector<int> visited;
     std::queue<FileTreeNode*> q;
     std::vector<std::string> rootPath;
