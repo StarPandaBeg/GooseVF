@@ -20,6 +20,9 @@ It doesn't support data compression, it just collects many files into one archiv
 > This project is designed primarily for educational purposes, although it may have practical uses as well
 
 ```cpp
+#include <GooseVF/FileReader.h>
+#include <GooseVF/FileWriter.h>
+
 using namespace GooseVF;
 
 // Create archive
