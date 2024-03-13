@@ -1,5 +1,6 @@
 #include "GooseVF/FileReader.h"
 
+#include <filesystem>
 #include <queue>
 
 #include "GooseVF/Utility.h"
@@ -14,8 +15,8 @@ FileReader::FileReader(const std::string& path) {
 }
 
 void FileReader::open(const std::string& path) {
-    file.open(path, std::ios::binary);
-    if (!file.is_open())
+    _file.open(path, std::ios::binary);
+    if (!_file.is_open())
         throw std::runtime_error("File not found");
 
     readHeader();
@@ -24,17 +25,17 @@ void FileReader::open(const std::string& path) {
     if (_fileVersion > 0)
         readMetadata();
 
-    _fileSectionBegin = file.tellg();
+    _fileSectionBegin = _file.tellg();
 }
 
 int FileReader::contentVersion() {
-    if (!file.is_open())
+    if (!_file.is_open())
         throw std::runtime_error("File is not opened");
     return _contentVersion;
 }
 
 void FileReader::readFile(const std::string& path, std::vector<char>& output) {
-    if (!file.is_open())
+    if (!_file.is_open())
         throw std::runtime_error("File is not opened");
 
     auto parts = splitPath(path);
@@ -62,79 +63,174 @@ void FileReader::readFile(const std::string& path, std::vector<char>& output) {
     }
 
     output.resize(node->size);
-    file.seekg(_fileSectionBegin + node->offset);
-    file.read(output.data(), node->size);
+    _file.seekg(_fileSectionBegin + node->offset);
+    _file.read(output.data(), node->size);
 }
 
-void FileReader::iterateFiles(const std::function<void(const std::string&)> callback) {
-    iterateFiles(callback, "\\");
+void FileReader::iterateFiles(const std::function<void(const std::string&)> callback, const std::string& basePath, int depth) {
+    if (!_file.is_open())
+        throw std::runtime_error("File is not opened");
+    iterateEntries(
+        [&callback](const std::string& path, bool is_directory) {
+            if (is_directory)
+                return;
+            callback(path);
+        },
+        basePath,
+        depth);
 }
 
-void FileReader::iterateFiles(const std::function<void(const std::string&)> callback, const std::string& rootDir) {
-    if (!file.is_open())
+void FileReader::iterateDirectories(const std::function<void(const std::string& path)> callback, const std::string& basePath, int depth) {
+    if (!_file.is_open())
+        throw std::runtime_error("File is not opened");
+    iterateEntries(
+        [&callback](const std::string& path, bool is_directory) {
+            if (!is_directory)
+                return;
+            callback(path);
+        },
+        basePath,
+        depth);
+}
+
+void FileReader::iterateEntries(const std::function<void(const std::string& path, bool is_directory)> callback, const std::string& basePath, int depth) {
+    if (!_file.is_open())
         throw std::runtime_error("File is not opened");
 
+    auto parts = splitPath(basePath);
+    if (parts[0] == ".")
+        parts.erase(parts.begin());
+    if (depth >= 0)
+        depth -= parts.size();
+    auto parentNode = getNode(basePath);
+
     std::vector<int> visited;
-    std::queue<FileTreeNode*> q;
-    std::vector<std::string> rootPath;
+    std::queue<std::pair<FileTreeNode*, int>> q;
+    auto& arr = (parentNode == nullptr) ? _root : parentNode->children_nodes;
 
-    auto* arr = &_root;
-    if (!rootDir.empty() && rootDir.compare("\\") != 0) {
-        rootPath = splitPath(rootDir);
-
-        for (auto& part : rootPath) {
-            auto it = std::find_if(arr->begin(), arr->end(),
-                                   [&part](FileTreeNode* n) {
-                                       return (!n->name.compare(part)) && (n->type == ENTRYDATA_TYPE_DIR);
-                                   });
-            if (it == arr->end()) {
-                throw std::runtime_error("Directory not found.");
-            }
-            arr = &(*it)->children_nodes;
-        }
-    }
-
-    for (auto& node : *arr) {
-        q.emplace(node);
+    for (auto& node : arr) {
+        q.emplace(std::make_pair(node, 0));
     }
 
     while (!q.empty()) {
-        auto node = q.front();
+        auto [node, nodeDepth] = q.front();
         q.pop();
         visited.push_back(node->id);
-
-        if (node->type == ENTRYDATA_TYPE_FILE) {
-            auto path = buildPath(node, rootPath);
-            callback(path);
+        if (depth >= 0 && nodeDepth > depth)
             continue;
-        }
+
+        auto path = buildPath(node);
+        auto relativePath = std::filesystem::relative(path, basePath).string();
+        callback(relativePath, node->type == ENTRYDATA_TYPE_DIR);
 
         for (auto& child : node->children_nodes) {
             if (std::find(visited.begin(), visited.end(), child->id) != visited.end())
                 continue;
-            q.push(child);
+            q.push(std::make_pair(child, nodeDepth + 1));
         }
     }
 }
 
+bool FileReader::exists(const std::string& path) {
+    if (!_file.is_open())
+        throw std::runtime_error("File is not opened");
+
+    auto parts = splitPath(path);
+    if (parts[0] == ".")
+        parts.erase(parts.begin());
+    if (!parts.size())
+        return false;
+
+    std::vector<FileTreeNode*>* arr = &_root;
+    for (size_t i = 0; i < parts.size(); i++) {
+        auto& name = parts[i];
+        auto it = std::find_if(arr->begin(), arr->end(),
+                               [&name](FileTreeNode* n) {
+                                   return (!n->name.compare(name));
+                               });
+        if (it == arr->end()) {
+            return false;
+        }
+        arr = &(*it)->children_nodes;
+    }
+    return true;
+}
+
+bool FileReader::is_file(const std::string& path) {
+    if (!_file.is_open())
+        throw std::runtime_error("File is not opened");
+
+    auto parts = splitPath(path);
+    if (parts[0] == ".")
+        parts.erase(parts.begin());
+    if (!parts.size())
+        return false;
+
+    std::vector<FileTreeNode*>* arr = &_root;
+    for (size_t i = 0; i < parts.size(); i++) {
+        auto& name = parts[i];
+        auto it = std::find_if(arr->begin(), arr->end(),
+                               [&name](FileTreeNode* n) {
+                                   return (!n->name.compare(name));
+                               });
+        if (it == arr->end()) {
+            return false;
+        }
+        arr = &(*it)->children_nodes;
+
+        if (i == parts.size() - 1) {
+            return (*it)->type == ENTRYDATA_TYPE_FILE;
+        }
+    }
+    return false;
+}
+
+bool FileReader::is_dir(const std::string& path) {
+    if (!_file.is_open())
+        throw std::runtime_error("File is not opened");
+    auto parts = splitPath(path);
+    if (parts[0] == ".")
+        parts.erase(parts.begin());
+    if (!parts.size())
+        return false;
+
+    std::vector<FileTreeNode*>* arr = &_root;
+    for (size_t i = 0; i < parts.size(); i++) {
+        auto& name = parts[i];
+        auto it = std::find_if(arr->begin(), arr->end(),
+                               [&name](FileTreeNode* n) {
+                                   return (!n->name.compare(name));
+                               });
+        if (it == arr->end()) {
+            return false;
+        }
+        arr = &(*it)->children_nodes;
+
+        if (i == parts.size() - 1) {
+            return (*it)->type == ENTRYDATA_TYPE_DIR;
+        }
+    }
+    return false;
+}
+
 void FileReader::readHeader() {
     std::vector<char> buffer(4);
-    file.read(buffer.data(), 4);  // Read magic header
+    _file.read(buffer.data(), 4);  // Read magic header
 
     std::string magic(buffer.begin(), buffer.end());
     if (magic != "HONK")
         throw new std::runtime_error("Invalid archive format");
 
-    file.read(buffer.data(), 1);  // Read file version
+    _file.read(buffer.data(), 1);  // Read file version
     _fileVersion = buffer[0];
 
-    file.read(buffer.data(), 4);  // Read content version
+    _file.read(buffer.data(), 4);  // Read content version
     _contentVersion = *((int*)buffer.data());
 }
 
 void FileReader::readEntryTable() {
     std::vector<char> buffer(4);
-    file.read(buffer.data(), 4);  // Read entry amount
+    _file.read(buffer.data(), 4);  // Read entry amount
 
     int totalEntries = *((int*)buffer.data());
     for (int i = 0; i < totalEntries; i++) {
@@ -147,25 +243,25 @@ void FileReader::readEntry() {
     std::vector<char> buffer2(8);
     auto entry = std::make_unique<FileTreeNode>();
 
-    file.read(buffer.data(), 4);  // Entry id
+    _file.read(buffer.data(), 4);  // Entry id
     entry->id = *((int*)buffer.data());
 
-    std::getline(file, entry->name, '\0');  // Entry name
-    file.read(buffer.data(), 1);            // Entry type
+    std::getline(_file, entry->name, '\0');  // Entry name
+    _file.read(buffer.data(), 1);            // Entry type
     entry->type = buffer[0];
 
     if (entry->type == ENTRYDATA_TYPE_FILE) {
-        file.read(buffer2.data(), 8);  // File offset (from file section beginning)
+        _file.read(buffer2.data(), 8);  // File offset (from file section beginning)
         entry->offset = *((unsigned long long*)buffer2.data());
-        file.read(buffer.data(), 4);  // File size (in bytes)
+        _file.read(buffer.data(), 4);  // File size (in bytes)
         entry->size = *((int*)buffer.data());
     }
     if (entry->type == ENTRYDATA_TYPE_DIR) {
-        file.read(buffer.data(), 4);  // Amount of children ids
+        _file.read(buffer.data(), 4);  // Amount of children ids
         int totalChildren = *((int*)buffer.data());
 
         for (int i = 0; i < totalChildren; i++) {
-            file.read(buffer.data(), 4);  // Child ID
+            _file.read(buffer.data(), 4);  // Child ID
             int child = *((int*)buffer.data());
             entry->children.push_back(child);
         }
@@ -214,8 +310,8 @@ void FileReader::buildEntryTree() {
 
 void FileReader::readMetadata() {
     std::vector<char> buffer(4);
-    file.read(buffer.data(), 4);  // Metadata names table size - always 0
-    file.read(buffer.data(), 4);  // Metadata values table size - always 0
+    _file.read(buffer.data(), 4);  // Metadata names table size - always 0
+    _file.read(buffer.data(), 4);  // Metadata values table size - always 0
 }
 
 std::string FileReader::buildPath(FileTreeNode* node) {
@@ -244,4 +340,27 @@ std::string FileReader::buildPath(FileTreeNode* node, const std::vector<std::str
     std::reverse(path.begin(), path.end());
 
     return GooseVF::buildPath(path);
+}
+
+FileReader::FileTreeNode* FileReader::getNode(const std::string& path) {
+    auto parts = splitPath(path);
+    if (parts[0] == ".")
+        parts.erase(parts.begin());
+    if (parts.size() == 0)
+        return nullptr;
+
+    auto* arr = &_root;
+    FileReader::FileTreeNode* node = nullptr;
+    for (auto& part : parts) {
+        auto it = std::find_if(arr->begin(), arr->end(),
+                               [&part](FileTreeNode* n) {
+                                   return (!n->name.compare(part)) && (n->type == ENTRYDATA_TYPE_DIR);
+                               });
+        if (it == arr->end()) {
+            return nullptr;
+        }
+        node = *it;
+        arr = &node->children_nodes;
+    }
+    return node;
 }
