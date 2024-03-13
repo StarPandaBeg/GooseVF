@@ -38,6 +38,9 @@ void FileReader::readFile(const std::string& path, std::vector<char>& output) {
         throw std::runtime_error("File is not opened");
 
     auto parts = splitPath(path);
+    if (parts[0] == ".")
+        parts.erase(parts.begin());
+
     if (!parts.size())
         throw std::runtime_error("File not found.");
 
