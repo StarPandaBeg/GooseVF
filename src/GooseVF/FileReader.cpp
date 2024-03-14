@@ -100,8 +100,6 @@ void FileReader::iterateEntries(const std::function<void(const std::string& path
     auto parts = splitPath(basePath);
     if (parts[0] == ".")
         parts.erase(parts.begin());
-    if (depth >= 0)
-        depth -= parts.size();
     auto parentNode = getNode(basePath);
 
     std::vector<int> visited;
